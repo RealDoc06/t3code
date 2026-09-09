@@ -862,6 +862,22 @@ layer("BitbucketPullRequestApi.layer", (it) => {
     }),
   );
 
+  it.effect("matches repository permissions after normalizing whitespace around segments", () =>
+    Effect.gen(function* () {
+      mockedRequest.mockImplementation((input) => {
+        const url = new URL(input.url, "https://api.bitbucket.org");
+        const matches =
+          url.pathname === "/user/workspaces/acme/permissions/repositories" &&
+          url.searchParams.get("q") === 'repository.full_name="acme/web"';
+        return Effect.succeed(response(valuePage(matches ? [{ permission: "read" }] : [])));
+      });
+      const api = yield* BitbucketPullRequestApi.BitbucketPullRequestApi;
+
+      // An unmatched, empty permission page is treated as unknown and would allow this attempt.
+      assert.isFalse(yield* api.getRepositoryPermission({ repository: " acme / web " }));
+    }),
+  );
+
   it.effect("escapes a repository name before it goes inside a filter literal", () =>
     Effect.gen(function* () {
       // @effect-diagnostics-next-line preferSchemaOverJson:off
