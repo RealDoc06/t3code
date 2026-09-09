@@ -87,7 +87,10 @@ export function resolveLinkPullRequestInput(input: {
   } | null;
   readonly hostHasProject: (host: string) => boolean;
 }): { link: ResolvedLink } | { error: string } | null {
-  const parsed = parsePullRequestReference(input.reference);
+  const parsed =
+    parseChangeRequestUrl(input.reference.trim()) !== null
+      ? input.reference.trim()
+      : parsePullRequestReference(input.reference);
   if (parsed === null) return null;
   const url = parseChangeRequestUrl(parsed);
   if (url !== null) {

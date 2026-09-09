@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { parseChangeRequestUrl } from "./changeRequestUrl.ts";
+import { parseChangeRequestUrl, siblingPullRequestUrl } from "./changeRequestUrl.ts";
 
 describe("parseChangeRequestUrl", () => {
   it("reads a GitHub pull request, lower-casing the repository", () => {
@@ -68,5 +68,40 @@ describe("parseChangeRequestUrl", () => {
     ]) {
       expect(parseChangeRequestUrl(link), link).toBeNull();
     }
+  });
+});
+
+describe("siblingPullRequestUrl", () => {
+  it.each([
+    ["https://github.com/pull/1/pull/42/files", "https://github.com/pull/1/pull/43"],
+    [
+      "https://git.acme.test/team/merge_requests/1/repo/-/merge_requests/42/diffs",
+      "https://git.acme.test/team/merge_requests/1/repo/-/merge_requests/43",
+    ],
+
+    ["https://github.com/acme/web/pull/42#discussion_r123", "https://github.com/acme/web/pull/43"],
+    ["https://github.com/acme/web/pull/42/files?w=1", "https://github.com/acme/web/pull/43"],
+    [
+      "https://github.acme.test:8443/acme/web/pull/42/",
+      "https://github.acme.test:8443/acme/web/pull/43",
+    ],
+    [
+      "https://git.acme.test/acme/web/-/merge_requests/42/diffs",
+      "https://git.acme.test/acme/web/-/merge_requests/43",
+    ],
+    [
+      "https://bitbucket.org/acme/web/pull-requests/42",
+      "https://bitbucket.org/acme/web/pull-requests/43",
+    ],
+    [
+      "https://dev.azure.com/acme/project/_git/web/pullrequest/42?view=files",
+      "https://dev.azure.com/acme/project/_git/web/pullrequest/43",
+    ],
+  ])("builds a canonical sibling of %s", (url, expected) => {
+    expect(siblingPullRequestUrl(url, 43)).toBe(expected);
+  });
+  it("rejects non-PR URLs and invalid numbers", () => {
+    expect(siblingPullRequestUrl("https://github.com/acme/web/issues/42", 43)).toBeNull();
+    expect(siblingPullRequestUrl("https://github.com/acme/web/pull/42", 0)).toBeNull();
   });
 });

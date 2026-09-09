@@ -439,6 +439,35 @@ describe("PullRequestSyncReactor", () => {
     ),
   );
 
+  it.effect("refreshes a closed link after its pull request is reopened", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse(NOW));
+        const fixture = yield* makeHarness({
+          snapshot: makeSnapshot([
+            makeThread("reopened", { pullRequests: [makeLink(42, { state: "closed" })] }),
+          ]),
+          summary: (input) => Effect.succeed(makeSummary(input, { state: "open" })),
+        });
+        yield* Effect.gen(function* () {
+          const reactor = yield* startAndSweep(fixture);
+          assert.deepStrictEqual(yield* Ref.get(fixture.summaryCalls), []);
+          yield* reactor.requestSync({
+            host: "github.com",
+            repository: "owner/repository",
+            number: 42,
+          });
+          yield* Queue.take(fixture.snapshotReads);
+          yield* reactor.drain;
+          const commands = yield* Ref.get(fixture.syncCommands);
+          yield* Ref.update(fixture.snapshots, (snapshot) => applySync(snapshot, commands));
+          const snapshot = yield* Ref.get(fixture.snapshots);
+          assert.strictEqual(snapshot.threads[0]?.pullRequests[0]?.snapshot?.state, "open");
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+    ),
+  );
+
   it.effect("stops asking the host once a pull request is terminal", () =>
     Effect.scoped(
       Effect.gen(function* () {

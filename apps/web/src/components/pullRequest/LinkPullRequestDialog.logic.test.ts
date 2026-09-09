@@ -9,6 +9,20 @@ const project = {
 };
 
 describe("resolveLinkPullRequestInput", () => {
+  it.each([
+    ["https://bitbucket.org/acme/web/pull-requests/42", "bitbucket.org"],
+    ["https://github.acme.test/acme/web/pull/42", "github.acme.test"],
+    ["https://git.acme.test/acme/web/-/merge_requests/42", "git.acme.test"],
+  ])("links supported host URL %s without a thread project", (url, host) => {
+    expect(
+      resolveLinkPullRequestInput({
+        reference: ` ${url} `,
+        project: null,
+        hostHasProject: (candidate) => candidate === host,
+      }),
+    ).toEqual({ link: { host, repository: "acme/web", number: 42, url } });
+  });
+
   it("returns null for input that is not a reference", () => {
     expect(
       resolveLinkPullRequestInput({ reference: "hello", project, hostHasProject: () => true }),

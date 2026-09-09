@@ -2203,9 +2203,21 @@ const makeWsRpcLayer = (
             { "rpc.aggregate": "pull-requests" },
           ),
         [WS_METHODS.pullRequestsRunAction]: (input) =>
-          observeRpcEffect(WS_METHODS.pullRequestsRunAction, pullRequests.runAction(input), {
-            "rpc.aggregate": "pull-requests",
-          }),
+          observeRpcEffect(
+            WS_METHODS.pullRequestsRunAction,
+            pullRequests
+              .runAction(input)
+              .pipe(
+                Effect.tap(() =>
+                  resolvePullRequestSyncKey(input).pipe(
+                    Effect.flatMap((key) =>
+                      key === null ? Effect.void : pullRequestSync.requestSync(key),
+                    ),
+                  ),
+                ),
+              ),
+            { "rpc.aggregate": "pull-requests" },
+          ),
         [WS_METHODS.pullRequestsUpdate]: (input) =>
           observeRpcEffect(WS_METHODS.pullRequestsUpdate, pullRequests.update(input), {
             "rpc.aggregate": "pull-requests",
