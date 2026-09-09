@@ -713,7 +713,7 @@ export const make = Effect.gen(function* () {
               supported.find(
                 (candidate) =>
                   candidate.api.kind === "azure-devops" &&
-                  candidate.project.repositoryIdentity !== undefined &&
+                  candidate.project.repositoryIdentity != null &&
                   canonicalRepositoryKey(
                     candidate.project.repositoryIdentity.canonicalKey.toLowerCase(),
                   ) === repositoryKey,

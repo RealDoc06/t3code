@@ -261,7 +261,7 @@ function applySync(
     threads: snapshot.threads.map((thread) => ({
       ...thread,
       pullRequests: thread.pullRequests.map((link) => {
-        const command = commands.find(
+        const command = commands.findLast(
           (candidate) => candidate.threadId === thread.id && candidate.number === link.number,
         );
         return command === undefined
@@ -468,7 +468,7 @@ describe("PullRequestSyncReactor", () => {
         });
         yield* Effect.gen(function* () {
           const reactor = yield* startAndSweep(fixture);
-          assert.deepStrictEqual(yield* Ref.get(fixture.summaryCalls), []);
+          assert.strictEqual((yield* Ref.get(fixture.summaryCalls)).length, 1);
           yield* reactor.requestSync({
             host: "github.com",
             repository: "owner/repository",
@@ -488,14 +488,13 @@ describe("PullRequestSyncReactor", () => {
     ),
   );
 
-  it.effect("stops asking the host once a pull request is terminal", () =>
+  it.effect("stops asking the host once a pull request is merged", () =>
     Effect.scoped(
       Effect.gen(function* () {
         yield* TestClock.setTime(Date.parse(NOW));
         const fixture = yield* makeHarness({
           snapshot: makeSnapshot([
             makeThread("merged", { pullRequests: [makeLink(1, { state: "merged" })] }),
-            makeThread("closed", { pullRequests: [makeLink(2, { state: "closed" })] }),
           ]),
         });
 
@@ -518,6 +517,72 @@ describe("PullRequestSyncReactor", () => {
             (yield* Ref.get(fixture.summaryCalls)).map((call) => call.number),
             [1],
           );
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+    ),
+  );
+
+  it.effect("discovers externally reopened pull requests after fifteen minutes", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse(NOW));
+        const state = yield* Ref.make<"closed" | "open">("closed");
+        const fixture = yield* makeHarness({
+          snapshot: makeSnapshot([
+            makeThread("closed", { pullRequests: [makeLink(2, { state: "closed" })] }),
+          ]),
+          summary: (input) =>
+            Ref.get(state).pipe(Effect.map((state) => makeSummary(input, { state }))),
+        });
+        yield* Effect.gen(function* () {
+          const reactor = yield* startAndSweep(fixture);
+          assert.strictEqual((yield* Ref.get(fixture.summaryCalls)).length, 1);
+          yield* Ref.set(state, "open");
+          for (let index = 0; index < 14; index += 1) yield* sweepAgain(fixture, reactor);
+          assert.strictEqual((yield* Ref.get(fixture.summaryCalls)).length, 1);
+          yield* sweepAgain(fixture, reactor);
+          assert.strictEqual((yield* Ref.get(fixture.summaryCalls)).length, 2);
+          assert.strictEqual((yield* Ref.get(fixture.syncCommands)).at(-1)?.snapshot.state, "open");
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+    ),
+  );
+
+  it.effect("preserves a refresh requested while an older host read is in flight", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse(NOW));
+        const reading = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        let calls = 0;
+        const fixture = yield* makeHarness({
+          snapshot: makeSnapshot([]),
+          summary: (input) =>
+            Effect.gen(function* () {
+              calls += 1;
+              if (calls === 1) {
+                yield* Deferred.succeed(reading, undefined);
+                yield* Deferred.await(release);
+              }
+              return makeSummary(input, { state: calls === 1 ? "closed" : "open" });
+            }),
+        });
+        yield* Effect.gen(function* () {
+          const reactor = yield* startAndSweep(fixture);
+          yield* Ref.set(
+            fixture.snapshots,
+            makeSnapshot([
+              makeThread("closed", { pullRequests: [makeLink(2, { state: "closed" })] }),
+            ]),
+          );
+          const key = { host: "github.com", repository: "owner/repository", number: 2 };
+          yield* reactor.requestSync(key);
+          yield* Deferred.await(reading);
+          yield* reactor.requestSync(key);
+          yield* Deferred.succeed(release, undefined);
+          yield* reactor.drain;
+          assert.strictEqual((yield* Ref.get(fixture.summaryCalls)).length, 2);
+          assert.strictEqual((yield* Ref.get(fixture.syncCommands)).at(-1)?.snapshot.state, "open");
         }).pipe(Effect.provide(fixture.layer));
       }),
     ),

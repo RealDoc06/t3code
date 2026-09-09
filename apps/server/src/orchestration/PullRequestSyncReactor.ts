@@ -44,7 +44,7 @@ export class PullRequestSyncReactor extends Context.Service<
   }
 >()("t3/orchestration/PullRequestSyncReactor") {}
 
-const SETTLED_SYNC_INTERVAL_MS = 15 * 60 * 1_000;
+const SLOW_SYNC_INTERVAL_MS = 15 * 60 * 1_000;
 
 type SnapshotFields = Omit<ThreadPullRequestSnapshot, "syncedAt">;
 
@@ -130,16 +130,19 @@ export const make = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
 
   const lastSyncedAt = new Map<string, number>();
-  const requested = new Set<string>();
+  const requested = new Map<string, number>();
+  let requestGeneration = 0;
   const retryStacks = new Set<string>();
 
   const isDue = (key: string, entries: ReadonlyArray<LinkEntry>, nowMs: number): boolean => {
     if (requested.has(key) || retryStacks.has(key)) return true;
     if (entries.some((entry) => entry.link.snapshot === null)) return true;
-    if (!entries.some((entry) => entry.link.snapshot?.state === "open")) return false;
-    if (entries.some((entry) => isUnsettled(entry.thread))) return true;
+    if (entries.every((entry) => entry.link.snapshot?.state === "merged")) return false;
+    if (entries.some((entry) => entry.link.snapshot?.state === "open" && isUnsettled(entry.thread)))
+      return true;
+    // Closed requests can reopen on the host, including after the thread settles.
     const last = lastSyncedAt.get(key);
-    return last === undefined || nowMs - last >= SETTLED_SYNC_INTERVAL_MS;
+    return last === undefined || nowMs - last >= SLOW_SYNC_INTERVAL_MS;
   };
 
   const logSkipped =
@@ -166,7 +169,7 @@ export const make = Effect.gen(function* () {
 
     for (const key of lastSyncedAt.keys()) if (!groups.has(key)) lastSyncedAt.delete(key);
     for (const key of retryStacks) if (!groups.has(key)) retryStacks.delete(key);
-    for (const key of requested) if (!groups.has(key)) requested.delete(key);
+    for (const key of requested.keys()) if (!groups.has(key)) requested.delete(key);
 
     // Layers auto-linked this sweep, so two links of one thread that share a
     // stack do not both try to add the same sibling.
@@ -242,11 +245,12 @@ export const make = Effect.gen(function* () {
         repository: first.link.repository,
         number: first.link.number,
       };
-      if (requested.has(key)) yield* pullRequests.invalidate({ reference: ref });
+      const generation = requested.get(key);
+      if (generation !== undefined) yield* pullRequests.invalidate({ reference: ref });
       const summary = yield* pullRequests.summary(ref, { recoverTransientFailure: false });
       const fields = snapshotFieldsOf(summary);
       const needsStack =
-        requested.has(key) ||
+        generation !== undefined ||
         retryStacks.has(key) ||
         entries.some(
           (entry) =>
@@ -272,7 +276,8 @@ export const make = Effect.gen(function* () {
       }
       // The host answered, so the cadence clock ticks even if a dispatch below is rejected.
       lastSyncedAt.set(key, nowMs);
-      requested.delete(key);
+      // A refresh requested while the host read was in flight belongs to the next sweep.
+      if (requested.get(key) === generation) requested.delete(key);
       yield* Effect.forEach(
         entries,
         (entry) =>
@@ -314,7 +319,7 @@ export const make = Effect.gen(function* () {
 
   const requestSync: PullRequestSyncReactor["Service"]["requestSync"] = (key) =>
     Effect.suspend(() => {
-      requested.add(threadPullRequestKeyOf(key));
+      requested.set(threadPullRequestKeyOf(key), ++requestGeneration);
       return worker.enqueue(undefined);
     });
 

@@ -109,8 +109,9 @@ Linking and unlinking are available in the web and desktop clients.
 
 The **Linked pull requests** panel lists every review and groups stacks. Unlink a review from its
 row menu. An unlinked stack layer stays out of later syncs. Open linked reviews refresh on the server;
-merged and closed reviews refresh when requested. With **Auto-settle merged threads** enabled, a
-thread can settle after every linked review is terminal. An open or unsynced link keeps it active.
+closed reviews refresh periodically so reopening one on the host is detected. Merged reviews refresh
+when requested. With **Auto-settle merged threads** enabled, a thread can settle after every linked
+review is terminal. An open or unsynced link keeps it active.
 
 Cross-repository links use a project on the same host. Azure DevOps reviews require a project checked
 out from the matching organization and repository.
