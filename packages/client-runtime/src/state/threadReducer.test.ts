@@ -434,17 +434,12 @@ describe("applyThreadDetailEvent", () => {
         },
       }) as const;
 
-    it("links, derives the compat field, and replaces by key", () => {
+    it("links without inventing a legacy route and replaces by key", () => {
       const linked = applyThreadDetailEvent(baseThread, linkEvent(5));
       expect(linked.kind).toBe("updated");
       if (linked.kind !== "updated") return;
       expect(linked.thread.pullRequests).toEqual([link]);
-      expect(linked.thread.linkedPullRequest).toEqual({
-        projectId: baseThread.projectId,
-        repository: "pingdotgg/t3code",
-        number: 42,
-        url: link.url,
-      });
+      expect(linked.thread.linkedPullRequest).toBeNull();
 
       const relinked = applyThreadDetailEvent(linked.thread, {
         ...linkEvent(6),

@@ -24,7 +24,11 @@ import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import {
   type ListThreadPullRequestsResult,
   PullRequestLinkFailedError,
-  PullRequestTargetError,
+  PullRequestUrlInvalidError,
+  PullRequestTargetIncompleteError,
+  PullRequestHostRequiredError,
+  PullRequestUnlinkFailedError,
+  PullRequestListFailedError,
   type PullRequestTargetInput,
   PullRequestThreadNotFoundError,
   PullRequestsToolkit,
@@ -65,23 +69,17 @@ const resolveTarget = Effect.fn("PullRequestsToolkit.resolveTarget")(function* (
   if (input.url !== undefined) {
     const parsed = parseChangeRequestUrl(input.url);
     if (parsed === null) {
-      return yield* new PullRequestTargetError({
-        reason: "invalid-url",
-      });
+      return yield* new PullRequestUrlInvalidError({});
     }
     return { ...parsed, url: input.url } satisfies ResolvedTarget;
   }
   if (input.repository === undefined || input.number === undefined) {
-    return yield* new PullRequestTargetError({
-      reason: "incomplete-target",
-    });
+    return yield* new PullRequestTargetIncompleteError({});
   }
   const projectHost = projectHostAndProvider(project);
   const host = (input.host ?? projectHost.host)?.toLowerCase();
   if (host === undefined) {
-    return yield* new PullRequestTargetError({
-      reason: "host-required",
-    });
+    return yield* new PullRequestHostRequiredError({});
   }
   const repository = input.repository.toLowerCase();
   const url =
@@ -152,36 +150,44 @@ const make = Effect.gen(function* () {
     );
 
   const requireThread = Effect.fn("PullRequestsToolkit.requireThread")(function* (
-    operation: "link" | "unlink" | "list",
+    Failure:
+      | typeof PullRequestLinkFailedError
+      | typeof PullRequestUnlinkFailedError
+      | typeof PullRequestListFailedError,
   ) {
     const scope = yield* McpInvocationContext.requireMcpCapability("pull-requests");
     const thread = yield* snapshots
       .getThreadShellById(scope.threadId)
-      .pipe(Effect.mapError((cause) => new PullRequestLinkFailedError({ operation, cause })));
+      .pipe(Effect.mapError((cause) => new Failure({ cause })));
     if (Option.isNone(thread)) {
       return yield* new PullRequestThreadNotFoundError({ threadId: scope.threadId });
     }
     return thread.value;
   });
 
-  const projectOf = (thread: OrchestrationThreadShell, operation: "link" | "unlink") =>
+  const projectOf = (
+    thread: OrchestrationThreadShell,
+    Failure: typeof PullRequestLinkFailedError | typeof PullRequestUnlinkFailedError,
+  ) =>
     snapshots.getProjectShellById(thread.projectId).pipe(
       Effect.map(Option.getOrUndefined),
-      Effect.mapError((cause) => new PullRequestLinkFailedError({ operation, cause })),
+      Effect.mapError((cause) => new Failure({ cause })),
     );
 
   const dispatchFailure =
-    (operation: "link" | "unlink") =>
-    <E>(cause: Cause.Cause<E>): Effect.Effect<never, PullRequestLinkFailedError> =>
+    (Failure: typeof PullRequestLinkFailedError | typeof PullRequestUnlinkFailedError) =>
+    <E>(
+      cause: Cause.Cause<E>,
+    ): Effect.Effect<never, PullRequestLinkFailedError | PullRequestUnlinkFailedError> =>
       Cause.hasInterruptsOnly(cause)
         ? Effect.failCause(cause as Cause.Cause<never>)
-        : Effect.fail(new PullRequestLinkFailedError({ operation, cause }));
+        : Effect.fail(new Failure({ cause }));
 
   return PullRequestsToolkit.of({
     link_pull_request: (input) =>
       Effect.gen(function* () {
-        const thread = yield* requireThread("link");
-        const project = yield* projectOf(thread, "link");
+        const thread = yield* requireThread(PullRequestLinkFailedError);
+        const project = yield* projectOf(thread, PullRequestLinkFailedError);
         const target = yield* resolveTarget(input, project);
         const alreadyLinked = yield* engine
           .dispatch({
@@ -199,14 +205,14 @@ const make = Effect.gen(function* () {
             // The decider rejects a second link of the same PR; for the agent that is
             // the outcome it asked for, not an error.
             Effect.catchTags({ OrchestrationCommandInvariantError: () => Effect.succeed(true) }),
-            Effect.catchCause(dispatchFailure("link")),
+            Effect.catchCause(dispatchFailure(PullRequestLinkFailedError)),
           );
         return { ...target, alreadyLinked };
       }),
     unlink_pull_request: (input) =>
       Effect.gen(function* () {
-        const thread = yield* requireThread("unlink");
-        const project = yield* projectOf(thread, "unlink");
+        const thread = yield* requireThread(PullRequestUnlinkFailedError);
+        const project = yield* projectOf(thread, PullRequestUnlinkFailedError);
         const target = yield* resolveTarget(input, project);
         const wasLinked = yield* engine
           .dispatch({
@@ -220,7 +226,7 @@ const make = Effect.gen(function* () {
           .pipe(
             Effect.as(true),
             Effect.catchTags({ OrchestrationCommandInvariantError: () => Effect.succeed(false) }),
-            Effect.catchCause(dispatchFailure("unlink")),
+            Effect.catchCause(dispatchFailure(PullRequestUnlinkFailedError)),
           );
         return {
           host: target.host,
@@ -229,7 +235,8 @@ const make = Effect.gen(function* () {
           wasLinked,
         };
       }),
-    list_thread_pull_requests: () => requireThread("list").pipe(Effect.map(listThreadPullRequests)),
+    list_thread_pull_requests: () =>
+      requireThread(PullRequestListFailedError).pipe(Effect.map(listThreadPullRequests)),
   });
 });
 

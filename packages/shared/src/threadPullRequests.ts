@@ -1,8 +1,12 @@
 import type {
+  RepositoryIdentity,
+  SourceControlProviderKind,
   ThreadLinkedPullRequest,
   ThreadPullRequestKey,
   ThreadPullRequestLink,
 } from "@t3tools/contracts";
+
+import { pullRequestHostOf } from "@t3tools/contracts";
 
 /** Identity comparison for links: host-level, case-insensitive on host and repository. */
 export function threadPullRequestKeysEqual(
@@ -92,16 +96,25 @@ export function resolveThreadCurrentPullRequestLink(
   return current.kind === "single" ? current.link : current.top;
 }
 
-/**
- * Compat shape for clients that predate `pullRequests`. `projectId` is the routing hint the
- * old shape carried; callers pass the thread's own project because the legacy consumers
- * only ever linked pull requests from it.
- */
+/** Legacy clients can only route links belonging to the thread's own repository. */
 export function legacyLinkedPullRequestOf(
   links: ReadonlyArray<ThreadPullRequestLink>,
   projectId: ThreadLinkedPullRequest["projectId"],
+  identity: RepositoryIdentity | null | undefined,
 ): ThreadLinkedPullRequest | null {
-  const link = resolveThreadCurrentPullRequestLink(links);
+  if (!identity) return null;
+  const host = pullRequestHostOf(identity, identity.provider as SourceControlProviderKind);
+  const repository =
+    identity.displayName ??
+    (identity.owner && identity.name ? `${identity.owner}/${identity.name}` : null);
+  if (repository === null) return null;
+  const link = resolveThreadCurrentPullRequestLink(
+    links.filter(
+      (link) =>
+        link.host.toLowerCase() === host.toLowerCase() &&
+        link.repository.toLowerCase() === repository.toLowerCase(),
+    ),
+  );
   if (link === null) return null;
   return { projectId, repository: link.repository, number: link.number, url: link.url };
 }

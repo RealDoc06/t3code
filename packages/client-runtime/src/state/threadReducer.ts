@@ -13,10 +13,7 @@ import type {
   ThreadPullRequestLink,
   TurnId,
 } from "@t3tools/contracts";
-import {
-  legacyLinkedPullRequestOf,
-  threadPullRequestKeysEqual,
-} from "@t3tools/shared/threadPullRequests";
+import { threadPullRequestKeysEqual } from "@t3tools/shared/threadPullRequests";
 import { isImportedAgentSessionMessageId } from "@t3tools/contracts";
 import { compareDateTimeStrings } from "@t3tools/shared/dateTime";
 
@@ -25,7 +22,7 @@ export type ThreadDetailReducerResult =
   | { readonly kind: "deleted" }
   | { readonly kind: "unchanged" };
 
-/** Links changed; the compat `linkedPullRequest` field follows them. */
+/** Keep only a legacy route supplied by the server; detail events cannot resolve project hosts. */
 function withPullRequests(
   thread: OrchestrationThread,
   pullRequests: ReadonlyArray<ThreadPullRequestLink>,
@@ -36,7 +33,13 @@ function withPullRequests(
     thread: {
       ...thread,
       pullRequests,
-      linkedPullRequest: legacyLinkedPullRequestOf(pullRequests, thread.projectId),
+      linkedPullRequest:
+        thread.linkedPullRequest &&
+        pullRequests.some(
+          (link) => link.source !== "stack-dismissed" && link.url === thread.linkedPullRequest?.url,
+        )
+          ? thread.linkedPullRequest
+          : null,
       updatedAt,
     },
   };

@@ -30,7 +30,9 @@ environment descriptor, never through a client version or an assumed coordinated
 | Neither flag                          | Hide linking actions; existing branch-discovered PR display remains available.                                    |
 
 New environments continue advertising the legacy flag, accepting legacy metadata commands, and
-emitting the derived `linkedPullRequest` field for older clients. New clients accept snapshots that
+emitting the derived `linkedPullRequest` field for older clients. That hostless field includes only
+links in the thread project's own repository; cross-host and cross-repository links require the
+multi-link protocol. New clients accept snapshots that
 omit `pullRequests`. Retain the legacy wire fields, projection column, and replay support; this feature
 does not schedule their removal. Missing new capabilities must also override cached multi-link data
 after an environment downgrade.

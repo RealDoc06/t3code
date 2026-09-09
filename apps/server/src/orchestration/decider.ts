@@ -15,7 +15,7 @@ import {
   type OrchestrationThreadActivity,
 } from "@t3tools/contracts";
 import {
-  resolveThreadCurrentPullRequestLink,
+  legacyLinkedPullRequestOf,
   threadPullRequestKeysEqual,
 } from "@t3tools/shared/threadPullRequests";
 import { compareDateTimeStrings } from "@t3tools/shared/dateTime";
@@ -901,7 +901,20 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       // Old clients only see the derived single link. Unlink that request through
       // the same command path as modern clients, including stack dismissal, while
       // retaining other links they cannot see. Historical metadata events still replay unchanged.
-      const currentPullRequest = resolveThreadCurrentPullRequestLink(thread.pullRequests);
+      const legacy = legacyLinkedPullRequestOf(
+        thread.pullRequests,
+        thread.projectId,
+        readModel.projects.find((project) => project.id === thread.projectId)?.repositoryIdentity,
+      );
+      const currentPullRequest =
+        legacy === null
+          ? null
+          : (thread.pullRequests.find(
+              (link) =>
+                link.url === legacy.url &&
+                link.number === legacy.number &&
+                link.repository === legacy.repository,
+            ) ?? null);
       if (command.linkedPullRequest != null) {
         const { linkedPullRequest: linked, ...metadata } = command;
         const project = readModel.projects.find((project) => project.id === thread.projectId);

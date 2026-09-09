@@ -53,19 +53,30 @@ export const PullRequestTargetInput = Schema.Struct({
 });
 export type PullRequestTargetInput = typeof PullRequestTargetInput.Type;
 
-export class PullRequestTargetError extends Schema.TaggedError<PullRequestTargetError>()(
-  "PullRequestTargetError",
-  { reason: Schema.Literals(["invalid-url", "incomplete-target", "host-required"]) },
+export class PullRequestUrlInvalidError extends Schema.TaggedError<PullRequestUrlInvalidError>()(
+  "PullRequestUrlInvalidError",
+  {},
 ) {
   override get message(): string {
-    switch (this.reason) {
-      case "invalid-url":
-        return "This is not a recognised pull request URL. Pass repository and number instead.";
-      case "incomplete-target":
-        return "Pass either url, or both repository and number.";
-      case "host-required":
-        return "This thread's project has no recognised remote. Pass host or url.";
-    }
+    return "This is not a recognised pull request URL. Pass repository and number instead.";
+  }
+}
+
+export class PullRequestTargetIncompleteError extends Schema.TaggedError<PullRequestTargetIncompleteError>()(
+  "PullRequestTargetIncompleteError",
+  {},
+) {
+  override get message(): string {
+    return "Pass either url, or both repository and number.";
+  }
+}
+
+export class PullRequestHostRequiredError extends Schema.TaggedError<PullRequestHostRequiredError>()(
+  "PullRequestHostRequiredError",
+  {},
+) {
+  override get message(): string {
+    return "This thread's project has no recognised remote. Pass host or url.";
   }
 }
 
@@ -80,18 +91,40 @@ export class PullRequestThreadNotFoundError extends Schema.TaggedError<PullReque
 
 export class PullRequestLinkFailedError extends Schema.TaggedError<PullRequestLinkFailedError>()(
   "PullRequestLinkFailedError",
-  { operation: Schema.Literals(["link", "unlink", "list"]), cause: Schema.Defect() },
+  { cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return `Could not ${this.operation} the pull request.`;
+    return "Could not link the pull request.";
+  }
+}
+
+export class PullRequestUnlinkFailedError extends Schema.TaggedError<PullRequestUnlinkFailedError>()(
+  "PullRequestUnlinkFailedError",
+  { cause: Schema.Defect() },
+) {
+  override get message(): string {
+    return "Could not unlink the pull request.";
+  }
+}
+
+export class PullRequestListFailedError extends Schema.TaggedError<PullRequestListFailedError>()(
+  "PullRequestListFailedError",
+  { cause: Schema.Defect() },
+) {
+  override get message(): string {
+    return "Could not list the pull request.";
   }
 }
 
 export const PullRequestToolError = Schema.Union([
   McpCapabilityUnavailableError,
-  PullRequestTargetError,
+  PullRequestUrlInvalidError,
+  PullRequestTargetIncompleteError,
+  PullRequestHostRequiredError,
   PullRequestThreadNotFoundError,
   PullRequestLinkFailedError,
+  PullRequestUnlinkFailedError,
+  PullRequestListFailedError,
 ]);
 export type PullRequestToolError = typeof PullRequestToolError.Type;
 

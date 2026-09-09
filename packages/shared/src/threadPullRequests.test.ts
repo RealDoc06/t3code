@@ -115,14 +115,42 @@ describe("resolveThreadCurrentPullRequest", () => {
 });
 
 describe("legacyLinkedPullRequestOf", () => {
-  it("projects the current link into the old shape with the thread's project", () => {
-    expect(legacyLinkedPullRequestOf([link(7)], "project-1" as never)).toEqual({
+  const identity = {
+    canonicalKey: "github.com/pingdotgg/t3code",
+    provider: "github",
+    displayName: "pingdotgg/t3code",
+    locator: {
+      source: "git-remote" as const,
+      remoteName: "origin",
+      remoteUrl: "https://github.com/pingdotgg/t3code.git",
+    },
+  };
+  it("projects only links the owning project can route without a host", () => {
+    expect(legacyLinkedPullRequestOf([link(7)], "project-1" as never, identity)).toEqual({
       projectId: "project-1",
       repository: "pingdotgg/t3code",
       number: 7,
       url: "https://github.com/pingdotgg/t3code/pull/7",
     });
-    expect(legacyLinkedPullRequestOf([], "project-1" as never)).toBeNull();
+    expect(legacyLinkedPullRequestOf([], "project-1" as never, identity)).toBeNull();
+  });
+  it.each([
+    {
+      host: "github.enterprise.test",
+      url: "https://github.enterprise.test/pingdotgg/t3code/pull/7",
+    },
+    { repository: "acme/other", url: "https://github.com/acme/other/pull/7" },
+  ])("omits an unsafe legacy route %j", (foreign) => {
+    expect(
+      legacyLinkedPullRequestOf([link(7, foreign)], "project-1" as never, identity),
+    ).toBeNull();
+    expect(
+      legacyLinkedPullRequestOf([link(7, foreign), link(8)], "project-1" as never, identity)
+        ?.number,
+    ).toBe(8);
+  });
+  it("does not guess when the project identity is unavailable", () => {
+    expect(legacyLinkedPullRequestOf([link(7)], "project-1" as never, null)).toBeNull();
   });
 });
 

@@ -62,6 +62,13 @@ export const DeleteProjectionThreadPullRequestsBySourceInput = Schema.Struct({
 export type DeleteProjectionThreadPullRequestsBySourceInput =
   typeof DeleteProjectionThreadPullRequestsBySourceInput.Type;
 
+const ProjectionThreadPullRequestDbRow = ProjectionThreadPullRequest.mapFields(
+  Struct.assign({
+    snapshot: Schema.NullOr(Schema.fromJsonString(ThreadPullRequestSnapshot)),
+    stack: Schema.NullOr(Schema.fromJsonString(ThreadPullRequestStack)),
+  }),
+);
+
 export class ProjectionThreadPullRequestRepository extends Context.Service<
   ProjectionThreadPullRequestRepository,
   {
@@ -85,13 +92,6 @@ export class ProjectionThreadPullRequestRepository extends Context.Service<
     ) => Effect.Effect<void, ProjectionRepositoryError>;
   }
 >()("t3/persistence/ProjectionThreadPullRequests/ProjectionThreadPullRequestRepository") {}
-
-const ProjectionThreadPullRequestDbRow = ProjectionThreadPullRequest.mapFields(
-  Struct.assign({
-    snapshot: Schema.NullOr(Schema.fromJsonString(ThreadPullRequestSnapshot)),
-    stack: Schema.NullOr(Schema.fromJsonString(ThreadPullRequestStack)),
-  }),
-);
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {

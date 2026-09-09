@@ -120,10 +120,15 @@ function updateThread(
 function pullRequestsPatch(
   thread: Pick<OrchestrationThread, "projectId">,
   pullRequests: ReadonlyArray<ThreadPullRequestLink>,
+  projects: OrchestrationReadModel["projects"],
 ): Pick<OrchestrationThread, "pullRequests" | "linkedPullRequest"> {
   return {
     pullRequests,
-    linkedPullRequest: legacyLinkedPullRequestOf(pullRequests, thread.projectId),
+    linkedPullRequest: legacyLinkedPullRequestOf(
+      pullRequests,
+      thread.projectId,
+      projects.find((project) => project.id === thread.projectId)?.repositoryIdentity,
+    ),
   };
 }
 
@@ -596,6 +601,7 @@ export function projectEvent(
                     payload.linkedPullRequest,
                     payload.updatedAt,
                   ),
+                  nextBase.projects,
                 )
               : {};
           return {
@@ -641,6 +647,7 @@ export function projectEvent(
               ...pullRequestsPatch(
                 thread,
                 upsertPullRequestLink(thread.pullRequests, payload.link),
+                nextBase.projects,
               ),
               updatedAt: payload.updatedAt,
             }),
@@ -663,7 +670,11 @@ export function projectEvent(
           return {
             ...nextBase,
             threads: updateThread(nextBase.threads, payload.threadId, {
-              ...pullRequestsPatch(thread, removePullRequestLink(thread.pullRequests, payload)),
+              ...pullRequestsPatch(
+                thread,
+                removePullRequestLink(thread.pullRequests, payload),
+                nextBase.projects,
+              ),
               updatedAt: payload.updatedAt,
             }),
           };
@@ -694,7 +705,7 @@ export function projectEvent(
           return {
             ...nextBase,
             threads: updateThread(nextBase.threads, payload.threadId, {
-              ...pullRequestsPatch(thread, pullRequests),
+              ...pullRequestsPatch(thread, pullRequests, nextBase.projects),
               updatedAt: payload.updatedAt,
             }),
           };

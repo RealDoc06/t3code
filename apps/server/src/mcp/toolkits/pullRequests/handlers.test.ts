@@ -271,13 +271,13 @@ describe("pull request toolkit handlers", () => {
       const error = yield* harness
         .call("link_pull_request", { repository: "x/y" })
         .pipe(Effect.flip);
-      expect(error).toMatchObject({ _tag: "PullRequestTargetError", reason: "incomplete-target" });
+      expect(error).toMatchObject({ _tag: "PullRequestTargetIncompleteError" });
       const unknown = yield* harness
         .call("link_pull_request", {
           url: "https://github.com/t3tools/t3code/issues/1?token=private-value",
         })
         .pipe(Effect.flip);
-      expect(unknown).toMatchObject({ _tag: "PullRequestTargetError", reason: "invalid-url" });
+      expect(unknown).toMatchObject({ _tag: "PullRequestUrlInvalidError" });
       expect(unknown.message).not.toContain("private-value");
       expect(yield* Ref.get(harness.commands)).toEqual([]);
     }),
@@ -412,7 +412,7 @@ describe("listThreadPullRequests", () => {
 
 it("keeps failure diagnostics as the cause rather than exposing them in the tool message", () => {
   const cause = new Error("database internals");
-  const failure = new PullRequestLinkFailedError({ operation: "link", cause });
+  const failure = new PullRequestLinkFailedError({ cause });
   expect(failure.message).toBe("Could not link the pull request.");
   expect(failure.cause).toBe(cause);
 });

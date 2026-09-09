@@ -93,7 +93,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
         )
       `;
 
-      // A merged link plus a newer open one: the legacy single-link field must
+      // A merged link plus a newer open one: the multi-link projection must
       // resolve to the open pull request, not the stale JSON column below.
       yield* sql`
         INSERT INTO projection_thread_pull_requests (
@@ -403,12 +403,6 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           runtimeMode: "full-access",
           branch: null,
           worktreePath: null,
-          linkedPullRequest: {
-            projectId: asProjectId("project-1"),
-            repository: "pingdotgg/t3code",
-            number: 42,
-            url: "https://github.com/pingdotgg/t3code/pull/42",
-          },
           pullRequests: expectedPullRequests,
           branchPullRequest,
           latestTurn: {
@@ -534,12 +528,6 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           runtimeMode: "full-access",
           branch: null,
           worktreePath: null,
-          linkedPullRequest: {
-            projectId: asProjectId("project-1"),
-            repository: "pingdotgg/t3code",
-            number: 42,
-            url: "https://github.com/pingdotgg/t3code/pull/42",
-          },
           pullRequests: expectedPullRequests,
           branchPullRequest,
           latestTurn: {
@@ -3346,4 +3334,57 @@ projectionSnapshotLayer("ProjectionSnapshotQuery imported sources", (it) => {
       assert.deepEqual(yield* query.getImportedAgentSessionSources(projectId), [imported, valid]);
     }),
   );
+});
+
+it.effect("omits foreign-host PRs from legacy snapshots while preserving native links", () => {
+  const layer = OrchestrationProjectionSnapshotQueryLive.pipe(
+    Layer.provide(ThreadBackgroundLiveness.layer),
+    Layer.provide(ThreadPlanProgress.layer),
+    Layer.provide(
+      Layer.succeed(RepositoryIdentityResolver.RepositoryIdentityResolver, {
+        resolve: () =>
+          Effect.succeed({
+            canonicalKey: "github.com/acme/web",
+            provider: "github",
+            displayName: "acme/web",
+            locator: {
+              source: "git-remote" as const,
+              remoteName: "origin",
+              remoteUrl: "https://github.com/acme/web.git",
+            },
+          }),
+      }),
+    ),
+    Layer.provideMerge(SqlitePersistenceMemory),
+  );
+  return Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const query = yield* ProjectionSnapshotQuery;
+    yield* sql`INSERT INTO projection_projects (project_id, title, workspace_root, scripts_json, created_at, updated_at)
+      VALUES ('project-1', 'Project', '/repo', '[]', '2026-09-09T00:00:00Z', '2026-09-09T00:00:00Z')`;
+    yield* sql`INSERT INTO projection_threads (thread_id, project_id, title, model_selection_json, runtime_mode, interaction_mode, created_at, updated_at)
+      VALUES ('thread-1', 'project-1', 'Thread', '{"provider":"codex","model":"gpt-5"}', 'full-access', 'default', '2026-09-09T00:00:00Z', '2026-09-09T00:00:00Z')`;
+    yield* sql`INSERT INTO projection_thread_pull_requests (thread_id, host, repository, number, url, source, linked_at)
+      VALUES ('thread-1', 'github.enterprise.test', 'acme/web', 42, 'https://github.enterprise.test/acme/web/pull/42', 'manual', '2026-09-09T00:00:00Z')`;
+    const readThreads = Effect.gen(function* () {
+      const full = yield* query.getSnapshot();
+      const shell = yield* query.getShellSnapshot();
+      const detail = yield* query.getThreadDetailById(ThreadId.make("thread-1"));
+      const individual = yield* query.getThreadShellById(ThreadId.make("thread-1"));
+      return [
+        full.threads[0]!,
+        shell.threads[0]!,
+        Option.getOrThrow(detail),
+        Option.getOrThrow(individual),
+      ];
+    });
+    for (const thread of yield* readThreads) {
+      assert.equal(thread.linkedPullRequest ?? null, null);
+      assert.equal(thread.pullRequests[0]?.host, "github.enterprise.test");
+    }
+    yield* sql`UPDATE projection_thread_pull_requests SET host = 'github.com', url = 'https://github.com/acme/web/pull/42'`;
+    for (const thread of yield* readThreads) {
+      assert.equal(thread.linkedPullRequest?.url, "https://github.com/acme/web/pull/42");
+    }
+  }).pipe(Effect.provide(layer));
 });

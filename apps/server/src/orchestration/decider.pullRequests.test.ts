@@ -18,6 +18,8 @@ import { decideOrchestrationCommand } from "./decider.ts";
 import { projectEvent } from "./projector.ts";
 import { isThreadDetailEvent } from "../ws.ts";
 
+const decodeCommand = Schema.decodeUnknownEffect(OrchestrationCommand);
+
 type PlannedEvent = Omit<OrchestrationEvent, "sequence">;
 
 function expectSingleEvent<Type extends OrchestrationEvent["type"]>(
@@ -51,7 +53,28 @@ function makeLink(overrides: Partial<ThreadPullRequestLink> = {}): ThreadPullReq
 function makeReadModel(pullRequests: ReadonlyArray<ThreadPullRequestLink>): OrchestrationReadModel {
   return {
     snapshotSequence: 0,
-    projects: [],
+    projects: [
+      {
+        id: ProjectId.make("project-1"),
+        title: "Project",
+        workspaceRoot: "/repo",
+        defaultModelSelection: null,
+        scripts: [],
+        createdAt: NOW,
+        updatedAt: NOW,
+        deletedAt: null,
+        repositoryIdentity: {
+          canonicalKey: "github.com/t3tools/t3code",
+          provider: "github",
+          displayName: "t3tools/t3code",
+          locator: {
+            source: "git-remote",
+            remoteName: "origin",
+            remoteUrl: "https://github.com/t3tools/t3code.git",
+          },
+        },
+      },
+    ],
     threads: [
       {
         id: THREAD_ID,
@@ -92,12 +115,35 @@ const snapshot: ThreadPullRequestSnapshot = {
 };
 
 it.layer(NodeServices.layer)("pull request link decider", (it) => {
+  it.effect("legacy unlink cannot remove a newer cross-host link", () =>
+    Effect.gen(function* () {
+      const own = makeLink();
+      const foreign = makeLink({
+        host: "github.enterprise.test",
+        url: "https://github.enterprise.test/t3tools/t3code/pull/42",
+        linkedAt: "2026-01-02T00:00:00Z",
+      });
+      const command = yield* decodeCommand({
+        type: "thread.meta.update",
+        commandId: "unlink",
+        threadId: THREAD_ID,
+        linkedPullRequest: null,
+      });
+      const decided = yield* decideOrchestrationCommand({
+        readModel: makeReadModel([own, foreign]),
+        command,
+      });
+      const event = expectSingleEvent(decided, "thread.pull-request-unlinked");
+      expect(event.payload.host).toBe("github.com");
+    }),
+  );
+
   it.effect("legacy replacement preserves unrelated manual links", () =>
     Effect.gen(function* () {
       const other = makeLink({ number: 7, snapshot: { ...snapshot, state: "merged" } });
       const current = makeLink({ linkedAt: "2026-01-02T00:00:00Z" });
       let model = makeReadModel([other, current]);
-      const command = yield* Schema.decodeUnknownEffect(OrchestrationCommand)({
+      const command = yield* decodeCommand({
         type: "thread.meta.update",
         commandId: "replace",
         threadId: THREAD_ID,
@@ -121,7 +167,7 @@ it.layer(NodeServices.layer)("pull request link decider", (it) => {
   );
   it.effect("legacy unlink alone does not emit an empty metadata event", () =>
     Effect.gen(function* () {
-      const command = yield* Schema.decodeUnknownEffect(OrchestrationCommand)({
+      const command = yield* decodeCommand({
         type: "thread.meta.update",
         commandId: "unlink",
         threadId: THREAD_ID,
@@ -143,7 +189,7 @@ it.layer(NodeServices.layer)("pull request link decider", (it) => {
         const current = makeLink({ source, linkedAt: "2026-01-02T00:00:00.000Z" });
         let model = makeReadModel([other, current]);
         // This is the pre-array command shape sent by older clients.
-        const command = yield* Schema.decodeUnknownEffect(OrchestrationCommand)({
+        const command = yield* decodeCommand({
           type: "thread.meta.update",
           commandId: "legacy-unlink",
           threadId: THREAD_ID,

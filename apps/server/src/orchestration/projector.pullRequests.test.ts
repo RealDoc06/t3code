@@ -120,7 +120,18 @@ it.effect("seeds threads with no pull requests", () =>
 
 it.effect("projects link, sync, and unlink onto the thread", () =>
   Effect.gen(function* () {
-    const created = yield* createThread(createEmptyReadModel(NOW));
+    const created = yield* createThread(
+      yield* createProject(createEmptyReadModel(NOW), {
+        canonicalKey: "github.com/t3tools/t3code",
+        provider: "github",
+        displayName: "t3tools/t3code",
+        locator: {
+          source: "git-remote",
+          remoteName: "origin",
+          remoteUrl: "https://github.com/t3tools/t3code.git",
+        },
+      }),
+    );
     const link = makeLink();
 
     const linked = yield* projectEvent(
@@ -232,6 +243,8 @@ it.effect("mirrors legacy meta-updated links into pullRequests using the project
   Effect.gen(function* () {
     const withProject = yield* createProject(createEmptyReadModel(NOW), {
       canonicalKey: "GitHub.com/t3tools/t3code",
+      provider: "github",
+      displayName: "t3tools/t3code",
       locator: {
         source: "git-remote",
         remoteName: "origin",

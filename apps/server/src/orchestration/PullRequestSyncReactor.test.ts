@@ -152,6 +152,7 @@ function makeSummary(
 }
 
 interface HarnessOptions {
+  readonly invalidate?: PullRequestService["Service"]["invalidate"];
   readonly snapshot: OrchestrationShellSnapshot;
   readonly summary?: (
     input: PullRequestRef,
@@ -202,7 +203,11 @@ const makeHarness = Effect.fn("makePullRequestSyncHarness")(function* (options: 
       getShellSnapshot: () =>
         Queue.offer(snapshotReads, undefined).pipe(Effect.andThen(Ref.get(snapshots))),
     }),
-    Layer.mock(PullRequestService)({ summary, stack }),
+    Layer.mock(PullRequestService)({
+      summary,
+      stack,
+      invalidate: options.invalidate ?? (() => Effect.void),
+    }),
     Layer.mock(OrchestrationEngineService)({
       readEvents: () => Stream.empty,
       dispatch,
@@ -439,15 +444,27 @@ describe("PullRequestSyncReactor", () => {
     ),
   );
 
-  it.effect("refreshes a closed link after its pull request is reopened", () =>
+  it.effect("refreshes closed links through the reactor's project after reopening elsewhere", () =>
     Effect.scoped(
       Effect.gen(function* () {
         yield* TestClock.setTime(Date.parse(NOW));
+        const stale = yield* Ref.make(true);
         const fixture = yield* makeHarness({
           snapshot: makeSnapshot([
-            makeThread("reopened", { pullRequests: [makeLink(42, { state: "closed" })] }),
+            makeThread("first", { pullRequests: [makeLink(42, { state: "closed" })] }),
+            makeThread("second", {
+              projectId: ProjectId.make("second-project"),
+              pullRequests: [makeLink(42, { state: "closed" })],
+            }),
           ]),
-          summary: (input) => Effect.succeed(makeSummary(input, { state: "open" })),
+          invalidate: ({ reference }) =>
+            reference?.projectId === makeProject().id && reference.host === "github.com"
+              ? Ref.set(stale, false)
+              : Effect.void,
+          summary: (input) =>
+            Ref.get(stale).pipe(
+              Effect.map((cached) => makeSummary(input, { state: cached ? "closed" : "open" })),
+            ),
         });
         yield* Effect.gen(function* () {
           const reactor = yield* startAndSweep(fixture);
@@ -462,7 +479,10 @@ describe("PullRequestSyncReactor", () => {
           const commands = yield* Ref.get(fixture.syncCommands);
           yield* Ref.update(fixture.snapshots, (snapshot) => applySync(snapshot, commands));
           const snapshot = yield* Ref.get(fixture.snapshots);
-          assert.strictEqual(snapshot.threads[0]?.pullRequests[0]?.snapshot?.state, "open");
+          assert.deepStrictEqual(
+            snapshot.threads.map((thread) => thread.pullRequests[0]?.snapshot?.state),
+            ["open", "open"],
+          );
         }).pipe(Effect.provide(fixture.layer));
       }),
     ),
