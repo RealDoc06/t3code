@@ -618,6 +618,7 @@ function OpenCommandPaletteDialog(props: {
       : resolveThreadReferenceCopyTarget({
           threadId: referenceThreadRef.threadId,
           openPanelPullRequestUrl,
+          pullRequests: activeThread?.pullRequests,
           linkedPullRequestUrl:
             activeThread?.linkedPullRequest?.url ?? activeThread?.branchPullRequest?.url ?? null,
         });

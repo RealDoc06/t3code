@@ -1,4 +1,7 @@
-import { sourceControlRepositorySelector } from "@t3tools/shared/sourceControl";
+import {
+  canonicalRepositoryKey,
+  sourceControlRepositorySelector,
+} from "@t3tools/shared/sourceControl";
 import * as Cache from "effect/Cache";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -698,15 +701,29 @@ export const make = Effect.gen(function* () {
             }),
           );
         }
-        return listWorkspaceProjects({ host }).pipe(
-          Effect.flatMap(({ supported: onHost }) => {
+        const repositoryKey = canonicalRepositoryKey(`${host}/${repository}`.toLowerCase());
+        // Azure SSH and legacy clone hosts differ from the browser URL's host. Compare
+        // the complete repository identity before narrowing those checkouts by host.
+        return listWorkspaceProjects(
+          repositoryKey.startsWith("dev.azure.com/") ? {} : { host },
+        ).pipe(
+          Effect.flatMap(({ supported }) => {
+            const onHost = supported.filter((candidate) => candidate.host === host);
             const route =
-              onHost.find((candidate) =>
-                candidate.api.kind === "azure-devops"
-                  ? candidate.project.repositoryIdentity?.displayName?.toLowerCase() ===
-                    repository.toLowerCase()
-                  : candidate.repository.toLowerCase() === repository.toLowerCase(),
-              ) ?? onHost.find((candidate) => candidate.api.kind !== "azure-devops");
+              supported.find(
+                (candidate) =>
+                  candidate.api.kind === "azure-devops" &&
+                  candidate.project.repositoryIdentity !== undefined &&
+                  canonicalRepositoryKey(
+                    candidate.project.repositoryIdentity.canonicalKey.toLowerCase(),
+                  ) === repositoryKey,
+              ) ??
+              onHost.find(
+                (candidate) =>
+                  candidate.api.kind !== "azure-devops" &&
+                  candidate.repository.toLowerCase() === repository.toLowerCase(),
+              ) ??
+              onHost.find((candidate) => candidate.api.kind !== "azure-devops");
             if (route === undefined) {
               return Effect.fail(
                 new PullRequestUnavailableError({ reason: "provider-unsupported" }),

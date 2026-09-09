@@ -93,7 +93,6 @@ export const linkCreatedPullRequest = <E>(input: {
         ? Effect.failCause(cause as Cause.Cause<never>)
         : Effect.logWarning("failed to link created pull request to thread", {
             threadId: input.threadId,
-            cause: Cause.pretty(cause),
           }),
     ),
   );

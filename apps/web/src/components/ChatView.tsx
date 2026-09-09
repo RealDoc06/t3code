@@ -5383,9 +5383,16 @@ export default function ChatView(props: ChatViewProps) {
         : resolveThreadReferenceCopyTarget({
             threadId: activeThreadId,
             openPanelPullRequestUrl,
+            pullRequests: activeThreadMetadata?.pullRequests,
             linkedPullRequestUrl: linkedThreadPullRequest?.url ?? null,
           }),
-    [activeThreadId, isServerThread, linkedThreadPullRequest?.url, openPanelPullRequestUrl],
+    [
+      activeThreadId,
+      isServerThread,
+      activeThreadMetadata?.pullRequests,
+      linkedThreadPullRequest?.url,
+      openPanelPullRequestUrl,
+    ],
   );
   const copyActiveThreadReference = useCallback(() => {
     const target = activeThreadReferenceCopyTarget;

@@ -145,9 +145,7 @@ export const make = Effect.gen(function* () {
   const logSkipped =
     (message: string, fields: Record<string, unknown>) =>
     <E>(cause: Cause.Cause<E>): Effect.Effect<void, E> =>
-      Cause.hasInterruptsOnly(cause)
-        ? Effect.failCause(cause)
-        : Effect.logWarning(message, { ...fields, cause: Cause.pretty(cause) });
+      Cause.hasInterruptsOnly(cause) ? Effect.failCause(cause) : Effect.logWarning(message, fields);
 
   const sweep = Effect.fn("PullRequestSyncReactor.sweep")(function* () {
     const snapshot = yield* snapshots.getShellSnapshot();
@@ -264,7 +262,6 @@ export const make = Effect.gen(function* () {
                 ? Effect.failCause(cause)
                 : Effect.logWarning("pull request stack lookup failed", {
                     key,
-                    cause: Cause.pretty(cause),
                   }).pipe(Effect.as(null)),
             ),
           )

@@ -32,6 +32,7 @@ function project(input: {
   readonly repository?: string;
   readonly provider?: string;
   readonly host?: string;
+  readonly remoteUrl?: string;
 }): OrchestrationProjectShell {
   // The host defaults from the provider, so a fixture only names one when the point of the
   // test is two hosts of the same kind.
@@ -47,7 +48,7 @@ function project(input: {
             locator: {
               source: "git-remote" as const,
               remoteName: "origin",
-              remoteUrl: `https://${host}/${input.repository}.git`,
+              remoteUrl: input.remoteUrl ?? `https://${host}/${input.repository}.git`,
             },
             provider: input.provider ?? "github",
             displayName: input.repository,
@@ -1675,6 +1676,74 @@ it.effect("routes Azure reads and writes through the requested organization's ch
     assert.deepStrictEqual(seen, ["read /org-b web", "write /org-b web", "read /org-b web"]);
   }),
 );
+
+for (const checkout of [
+  {
+    host: "ssh.dev.azure.com",
+    repository: "v3/org-b/project/web",
+    remoteUrl: "git@ssh.dev.azure.com:v3/org-b/project/web",
+  },
+  {
+    host: "vs-ssh.visualstudio.com",
+    repository: "v3/org-b/project/web",
+    remoteUrl: "git@vs-ssh.visualstudio.com:v3/org-b/project/web",
+  },
+  {
+    host: "org-b.visualstudio.com",
+    repository: "DefaultCollection/project/_git/web",
+    remoteUrl: "https://org-b.visualstudio.com/DefaultCollection/project/_git/web",
+  },
+]) {
+  it.effect(`routes Azure URL reads and writes through a ${checkout.host} checkout`, () =>
+    Effect.gen(function* () {
+      const seen: string[] = [];
+      const target = project({
+        id: "target",
+        title: "target",
+        workspaceRoot: "/target",
+        provider: "azure-devops",
+        ...checkout,
+      });
+      const service = yield* makeService({
+        projects: [
+          ...["org-a/project/_git/web", "org-b/other-project/_git/web"].map((repository) =>
+            project({
+              id: repository,
+              title: repository,
+              workspaceRoot: `/${repository}`,
+              provider: "azure-devops",
+              host: "dev.azure.com",
+              repository,
+            }),
+          ),
+          target,
+        ],
+        providers: [
+          fakeProvider("azure-devops", {
+            getChangeRequestSummary: (input) =>
+              Effect.sync(() => {
+                seen.push(`read ${input.cwd} ${input.repository}`);
+                return changeRequest(7, "2026-07-02T00:00:00Z");
+              }),
+            runAction: (input) =>
+              Effect.sync(() => {
+                seen.push(`write ${input.cwd} ${input.repository}`);
+              }),
+          }),
+        ],
+      });
+      const reference = {
+        projectId: "org-a/project/_git/web" as ProjectId,
+        host: "dev.azure.com",
+        repository: "org-b/project/_git/web",
+        number: 7,
+      };
+      yield* service.summary(reference, { recoverTransientFailure: false });
+      yield* service.runAction({ ...reference, action: "merge" });
+      assert.deepStrictEqual(seen, ["read /target web", "write /target web", "read /target web"]);
+    }),
+  );
+}
 
 it.effect("refuses Azure cross-organization reads and writes without its checkout", () =>
   Effect.gen(function* () {
