@@ -1,3 +1,4 @@
+import { legacyThreadPullRequestKey } from "@t3tools/shared/threadPullRequests";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
@@ -24,19 +25,6 @@ function parseLegacyLinkedPullRequest(json: string): LegacyLinkedPullRequest | n
     return { repository, number, url };
   } catch {
     return null;
-  }
-}
-
-/**
- * Projects never persisted their repository identity, so the pull request URL
- * is the only host source available to a migration.
- */
-function hostFromUrl(url: string): string {
-  try {
-    const hostname = new URL(url).hostname.trim().toLowerCase();
-    return hostname.length > 0 ? hostname : "unknown";
-  } catch {
-    return "unknown";
   }
 }
 
@@ -75,6 +63,7 @@ export default Effect.gen(function* () {
   for (const row of legacyRows) {
     const linked = parseLegacyLinkedPullRequest(row.linkedPullRequestJson);
     if (linked === null) continue;
+    const key = legacyThreadPullRequestKey(linked);
     yield* sql`
       INSERT OR IGNORE INTO projection_thread_pull_requests (
         thread_id,
@@ -89,8 +78,8 @@ export default Effect.gen(function* () {
       )
       VALUES (
         ${row.threadId},
-        ${hostFromUrl(linked.url)},
-        ${linked.repository.trim().toLowerCase()},
+        ${key.host},
+        ${key.repository},
         ${linked.number},
         ${linked.url},
         'manual',

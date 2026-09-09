@@ -371,3 +371,47 @@ it.effect("leaves pullRequests alone when meta-updated carries no legacy link", 
     expect(retitled.threads[0]?.pullRequests).toEqual([link]);
   }),
 );
+
+it.effect("replays Azure legacy selectors as full repository keys", () =>
+  Effect.gen(function* () {
+    const withProject = yield* createProject(createEmptyReadModel(NOW), {
+      canonicalKey: "ssh.dev.azure.com/v3/org-a/project/web",
+      provider: "azure-devops",
+      displayName: "v3/org-a/project/web",
+      name: "web",
+      locator: {
+        source: "git-remote",
+        remoteName: "origin",
+        remoteUrl: "git@ssh.dev.azure.com:v3/org-a/project/web",
+      },
+    });
+    const created = yield* createThread(withProject);
+    const legacy = {
+      projectId: PROJECT_ID,
+      repository: "web",
+      number: 7,
+      url: "https://dev.azure.com/org-a/project/_git/web/pullrequest/7",
+    };
+    const model = yield* projectEvent(
+      created,
+      makeEvent({
+        sequence: 3,
+        type: "thread.meta-updated",
+        payload: { threadId: THREAD_ID, linkedPullRequest: legacy, updatedAt: LATER },
+      }),
+    );
+    expect(model.threads[0]?.pullRequests).toEqual([
+      {
+        host: "dev.azure.com",
+        repository: "org-a/project/_git/web",
+        number: 7,
+        url: legacy.url,
+        source: "manual",
+        linkedAt: LATER,
+        snapshot: null,
+        stack: null,
+      },
+    ]);
+    expect(model.threads[0]?.linkedPullRequest).toEqual(legacy);
+  }),
+);

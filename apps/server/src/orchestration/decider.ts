@@ -16,6 +16,8 @@ import {
 } from "@t3tools/contracts";
 import {
   legacyLinkedPullRequestOf,
+  legacyThreadPullRequestKey,
+  normalizeThreadPullRequestKey,
   threadPullRequestKeysEqual,
 } from "@t3tools/shared/threadPullRequests";
 import { compareDateTimeStrings } from "@t3tools/shared/dateTime";
@@ -125,15 +127,6 @@ function hasQueuedTurnStartForThread(
     },
     now,
   );
-}
-
-/** Link identity as stored: host and repository lowercased so equal keys persist equal. */
-function normalizePullRequestKey(key: ThreadPullRequestKey): ThreadPullRequestKey {
-  return {
-    host: key.host.trim().toLowerCase(),
-    repository: key.repository.trim().toLowerCase(),
-    number: key.number,
-  };
 }
 
 function findPullRequestLink(
@@ -910,10 +903,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         legacy === null
           ? null
           : (thread.pullRequests.find(
-              (link) =>
-                link.url === legacy.url &&
-                link.number === legacy.number &&
-                link.repository === legacy.repository,
+              (link) => link.url === legacy.url && link.number === legacy.number,
             ) ?? null);
       if (command.linkedPullRequest != null) {
         const { linkedPullRequest: linked, ...metadata } = command;
@@ -947,9 +937,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
               type: "thread.pull-request.link",
               commandId: command.commandId,
               threadId: command.threadId,
-              host,
-              repository: linked.repository,
-              number: linked.number,
+              ...legacyThreadPullRequestKey(linked, host),
               url: linked.url,
               source: "manual",
             },
@@ -1027,7 +1015,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         command,
         threadId: command.threadId,
       });
-      const key = normalizePullRequestKey(command);
+      const key = normalizeThreadPullRequestKey(command);
       const existing = findPullRequestLink(thread, key);
       // An explicit link on a dismissed stack member un-dismisses it; any
       // other duplicate is a no-op the engine would reject as zero-event.
@@ -1073,7 +1061,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         command,
         threadId: command.threadId,
       });
-      const key = normalizePullRequestKey(command);
+      const key = normalizeThreadPullRequestKey(command);
       const existing = findPullRequestLink(thread, key);
       if (existing === undefined) {
         return yield* new OrchestrationCommandInvariantError({
@@ -1127,7 +1115,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         command,
         threadId: command.threadId,
       });
-      const key = normalizePullRequestKey(command);
+      const key = normalizeThreadPullRequestKey(command);
       if (findPullRequestLink(thread, key) === undefined) {
         return yield* new OrchestrationCommandInvariantError({
           commandType: command.type,

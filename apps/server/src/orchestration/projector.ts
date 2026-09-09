@@ -16,6 +16,7 @@ import {
 } from "@t3tools/contracts";
 import {
   legacyLinkedPullRequestOf,
+  legacyThreadPullRequestKey,
   threadPullRequestKeysEqual,
 } from "@t3tools/shared/threadPullRequests";
 import { compareDateTimeStrings } from "@t3tools/shared/dateTime";
@@ -178,9 +179,7 @@ function legacyLinkToPullRequests(
   const withoutManual = thread.pullRequests.filter((entry) => entry.source !== "manual");
   if (linked === null) return withoutManual;
   return upsertPullRequestLink(withoutManual, {
-    host: legacyPullRequestHost(project, linked),
-    repository: linked.repository.toLowerCase(),
-    number: linked.number,
+    ...legacyThreadPullRequestKey(linked, legacyPullRequestHost(project, linked)),
     url: linked.url,
     source: "manual",
     linkedAt,

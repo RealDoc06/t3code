@@ -763,9 +763,9 @@ it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-projection-pull
             threadId,
             linkedPullRequest: {
               projectId,
-              repository: "PingDotGG/T3Code",
+              repository: "web",
               number: 41,
-              url: "https://GitHub.com/pingdotgg/t3code/pull/41",
+              url: "https://org-a.visualstudio.com/DefaultCollection/project/_git/web/pullrequest/41",
             },
             updatedAt: "2026-01-01T00:00:01.000Z",
           },
@@ -792,8 +792,8 @@ it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-projection-pull
 
         assert.deepEqual(yield* readLinks(), [
           {
-            host: "github.com",
-            repository: "pingdotgg/t3code",
+            host: "dev.azure.com",
+            repository: "org-a/project/_git/web",
             number: 41,
             source: "manual",
             linkedAt: "2026-01-01T00:00:01.000Z",

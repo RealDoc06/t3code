@@ -165,6 +165,57 @@ it.layer(NodeServices.layer)("pull request link decider", (it) => {
       expect(model.threads[0]!.pullRequests.map((link) => link.number)).toEqual([7, 99]);
     }),
   );
+  it.effect("round-trips an Azure legacy link and unlinks only its organization", () =>
+    Effect.gen(function* () {
+      const foreign = makeLink({
+        host: "dev.azure.com",
+        repository: "org-b/project/_git/web",
+        number: 7,
+        url: "https://dev.azure.com/org-b/project/_git/web/pullrequest/7",
+      });
+      let model = makeReadModel([foreign]);
+      model = {
+        ...model,
+        projects: model.projects.map((project) => ({
+          ...project,
+          repositoryIdentity: {
+            ...project.repositoryIdentity!,
+            provider: "azure-devops",
+            canonicalKey: "ssh.dev.azure.com/v3/org-a/project/web",
+            displayName: "v3/org-a/project/web",
+            name: "web",
+          },
+        })),
+      };
+      const legacy = {
+        projectId: "project-1",
+        repository: "web",
+        number: 7,
+        url: "https://dev.azure.com/org-a/project/_git/web/pullrequest/7",
+      };
+      for (const linkedPullRequest of [legacy, null]) {
+        const command = yield* decodeCommand({
+          type: "thread.meta.update",
+          commandId: linkedPullRequest === null ? "unlink-azure" : "link-azure",
+          threadId: THREAD_ID,
+          linkedPullRequest,
+        });
+        const decided = yield* decideOrchestrationCommand({ readModel: model, command });
+        for (const event of Array.isArray(decided) ? decided : [decided]) {
+          model = yield* projectEvent(model, { ...event, sequence: model.snapshotSequence + 1 });
+        }
+        if (linkedPullRequest !== null) {
+          expect(model.threads[0]!.linkedPullRequest).toEqual(legacy);
+          expect(model.threads[0]!.pullRequests.map((link) => link.repository)).toEqual([
+            "org-b/project/_git/web",
+            "org-a/project/_git/web",
+          ]);
+        }
+      }
+      expect(model.threads[0]!.pullRequests).toEqual([foreign]);
+      expect(model.threads[0]!.linkedPullRequest).toBeNull();
+    }),
+  );
   it.effect("legacy unlink alone does not emit an empty metadata event", () =>
     Effect.gen(function* () {
       const command = yield* decodeCommand({

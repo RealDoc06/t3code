@@ -17,6 +17,20 @@ it.effect(
       VALUES ('project-1', 'Project', '/tmp/project', '[]', ${createdAt}, ${createdAt})
     `;
       const fixtures = [
+        {
+          id: "azure",
+          host: "dev.azure.com",
+          repository: "org/project/_git/web",
+          number: 7,
+          source: "manual",
+        },
+        {
+          id: "other-org",
+          host: "dev.azure.com",
+          repository: "other/project/_git/web",
+          number: 7,
+          source: "manual",
+        },
         { id: "active", host: "github.com", repository: "acme/web", number: 7, source: "manual" },
         {
           id: "archived",
@@ -73,6 +87,13 @@ it.effect(
       `;
       }
 
+      expect(
+        (yield* listLinkedPullRequestThreads({
+          host: "org.visualstudio.com",
+          repository: "project/_git/web",
+          number: 7,
+        })).threads.map((thread) => thread.id),
+      ).toEqual(["azure"]);
       const result = yield* listLinkedPullRequestThreads({
         host: "GitHub.Com",
         repository: "ACME/WEB",

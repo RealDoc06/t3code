@@ -536,6 +536,53 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
     }),
   );
 
+  it.effect("uses one Azure identity for repository writes, lookups, and deletion", () =>
+    Effect.gen(function* () {
+      const pullRequests = yield* ProjectionThreadPullRequestRepository;
+      const threadId = ThreadId.make("azure-alias-link");
+      const row: ProjectionThreadPullRequest = {
+        threadId,
+        host: "org.visualstudio.com",
+        repository: "project/_git/web",
+        number: 7,
+        url: "https://org.visualstudio.com/project/_git/web/pullrequest/7",
+        source: "manual",
+        linkedAt: "2026-09-09T00:00:00.000Z",
+        snapshot: null,
+        stack: null,
+      };
+      yield* pullRequests.upsert(row);
+      yield* pullRequests.upsert({
+        ...row,
+        host: "dev.azure.com",
+        repository: "org/project/_git/web",
+      });
+      const found = yield* pullRequests.listByPullRequest({
+        host: "ssh.dev.azure.com",
+        repository: "v3/org/project/web",
+        number: 7,
+      });
+      assert.deepStrictEqual(found, [
+        { ...row, host: "dev.azure.com", repository: "org/project/_git/web" },
+      ]);
+      assert.deepStrictEqual(
+        yield* pullRequests.listByPullRequest({
+          host: "dev.azure.com",
+          repository: "other/project/_git/web",
+          number: 7,
+        }),
+        [],
+      );
+      yield* pullRequests.delete({
+        threadId,
+        host: "vs-ssh.visualstudio.com",
+        repository: "v3/org/project/web",
+        number: 7,
+      });
+      assert.deepStrictEqual(yield* pullRequests.listByThreadId({ threadId }), []);
+    }),
+  );
+
   it.effect("round-trips pull request links with JSON snapshot and stack columns", () =>
     Effect.gen(function* () {
       const pullRequests = yield* ProjectionThreadPullRequestRepository;

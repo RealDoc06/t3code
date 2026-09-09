@@ -6,7 +6,6 @@ import {
   type OrchestrationEvent,
   type OrchestrationSessionStatus,
   ThreadId,
-  type ThreadLinkedPullRequest,
 } from "@t3tools/contracts";
 import { compareDateTimeStrings } from "@t3tools/shared/dateTime";
 import * as Effect from "effect/Effect";
@@ -17,7 +16,10 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
-import { threadPullRequestKeysEqual } from "@t3tools/shared/threadPullRequests";
+import {
+  legacyThreadPullRequestKey,
+  threadPullRequestKeysEqual,
+} from "@t3tools/shared/threadPullRequests";
 
 import { toPersistenceSqlError, type ProjectionRepositoryError } from "../../persistence/Errors.ts";
 import { OrchestrationEventStore } from "../../persistence/Services/OrchestrationEventStore.ts";
@@ -97,20 +99,6 @@ function settledTurnStateForSessionStatus(
     case "starting":
     case "running":
       return null;
-  }
-}
-
-/**
- * Legacy single-link events carried no host. Projects never persisted their
- * repository identity, so the pull request URL is the only host source the
- * pipeline has, matching the 046 migration backfill.
- */
-function legacyPullRequestHost(linked: ThreadLinkedPullRequest): string {
-  try {
-    const hostname = new URL(linked.url).hostname.trim().toLowerCase();
-    return hostname.length > 0 ? hostname : "unknown";
-  } catch {
-    return "unknown";
   }
 }
 
@@ -855,9 +843,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
               const linked = event.payload.linkedPullRequest;
               yield* projectionThreadPullRequestRepository.upsert({
                 threadId: event.payload.threadId,
-                host: legacyPullRequestHost(linked),
-                repository: linked.repository.toLowerCase(),
-                number: linked.number,
+                ...legacyThreadPullRequestKey(linked),
                 url: linked.url,
                 source: "manual",
                 linkedAt: event.payload.updatedAt,

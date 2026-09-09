@@ -1,3 +1,4 @@
+import { normalizeThreadPullRequestKey } from "@t3tools/shared/threadPullRequests";
 import {
   IsoDateTime,
   PositiveInt,
@@ -203,7 +204,7 @@ export const make = Effect.gen(function* () {
   });
 
   const upsert: ProjectionThreadPullRequestRepository["Service"]["upsert"] = (row) =>
-    upsertProjectionThreadPullRequestRow(row).pipe(
+    upsertProjectionThreadPullRequestRow({ ...row, ...normalizeThreadPullRequestKey(row) }).pipe(
       Effect.mapError(toPersistenceSqlError("ProjectionThreadPullRequestRepository.upsert:query")),
     );
 
@@ -219,14 +220,17 @@ export const make = Effect.gen(function* () {
   const listByPullRequest: ProjectionThreadPullRequestRepository["Service"]["listByPullRequest"] = (
     input,
   ) =>
-    listProjectionThreadPullRequestRowsByPullRequest(input).pipe(
+    listProjectionThreadPullRequestRowsByPullRequest(normalizeThreadPullRequestKey(input)).pipe(
       Effect.mapError(
         toPersistenceSqlError("ProjectionThreadPullRequestRepository.listByPullRequest:query"),
       ),
     );
 
   const deleteLink: ProjectionThreadPullRequestRepository["Service"]["delete"] = (input) =>
-    deleteProjectionThreadPullRequestRow(input).pipe(
+    deleteProjectionThreadPullRequestRow({
+      ...input,
+      ...normalizeThreadPullRequestKey(input),
+    }).pipe(
       Effect.mapError(toPersistenceSqlError("ProjectionThreadPullRequestRepository.delete:query")),
     );
 

@@ -7,21 +7,60 @@ import type {
 } from "@t3tools/contracts";
 
 import { pullRequestHostOf } from "@t3tools/contracts";
+import { parseChangeRequestUrl } from "./changeRequestUrl.ts";
+import { canonicalRepositoryKey, sourceControlRepositorySelector } from "./sourceControl.ts";
+
+/** Normalize stored link identity, including Azure's SSH and browser host aliases. */
+export function normalizeThreadPullRequestKey(key: ThreadPullRequestKey): ThreadPullRequestKey {
+  const canonical = canonicalRepositoryKey(
+    `${key.host.trim().toLowerCase()}/${key.repository.trim().toLowerCase()}`,
+  );
+  const separator = canonical.indexOf("/");
+  return {
+    host: canonical.slice(0, separator),
+    repository: canonical.slice(separator + 1),
+    number: key.number,
+  };
+}
+
+/** Legacy Azure selectors omit the organization and project; recover those from the PR URL. */
+export function legacyThreadPullRequestKey(
+  linked: Pick<ThreadLinkedPullRequest, "repository" | "number" | "url">,
+  fallbackHost?: string,
+): ThreadPullRequestKey {
+  const parsed = parseChangeRequestUrl(linked.url);
+  if (parsed !== null && parsed.number === linked.number) {
+    const canonical = canonicalRepositoryKey(`${parsed.host}/${parsed.repository}`);
+    if (canonical.startsWith("dev.azure.com/")) {
+      return normalizeThreadPullRequestKey(parsed);
+    }
+  }
+  let host = fallbackHost;
+  if (host === undefined) {
+    try {
+      host = new URL(linked.url).hostname;
+    } catch {
+      host = "unknown";
+    }
+  }
+  return {
+    host: host.trim().toLowerCase() || "unknown",
+    repository: linked.repository.trim().toLowerCase(),
+    number: linked.number,
+  };
+}
 
 /** Identity comparison for links: host-level, case-insensitive on host and repository. */
 export function threadPullRequestKeysEqual(
   left: ThreadPullRequestKey,
   right: ThreadPullRequestKey,
 ): boolean {
-  return (
-    left.number === right.number &&
-    left.host.toLowerCase() === right.host.toLowerCase() &&
-    left.repository.toLowerCase() === right.repository.toLowerCase()
-  );
+  return threadPullRequestKeyOf(left) === threadPullRequestKeyOf(right);
 }
 
 export function threadPullRequestKeyOf(key: ThreadPullRequestKey): string {
-  return `${key.host.toLowerCase()}/${key.repository.toLowerCase()}#${key.number}`;
+  const normalized = normalizeThreadPullRequestKey(key);
+  return `${normalized.host}/${normalized.repository}#${normalized.number}`;
 }
 
 /** Links a user should see. Tombstoned stack members stay in the array only so the
@@ -68,7 +107,7 @@ export function resolveThreadCurrentPullRequest(
   const chains = resolveThreadPullRequestChains(visible);
   if (open.length > 1) {
     const openChains = chains
-      .map((chain) => [...chain.layers].reverse().filter(isOpen))
+      .map((chain) => chain.layers.toReversed().filter(isOpen))
       .filter((layers) => layers.length > 0)
       .sort(
         (left, right) =>
@@ -104,19 +143,31 @@ export function legacyLinkedPullRequestOf(
 ): ThreadLinkedPullRequest | null {
   if (!identity) return null;
   const host = pullRequestHostOf(identity, identity.provider as SourceControlProviderKind);
-  const repository =
-    identity.displayName ??
-    (identity.owner && identity.name ? `${identity.owner}/${identity.name}` : null);
+  const repository = sourceControlRepositorySelector(identity);
   if (repository === null) return null;
+  const azureKey =
+    identity.provider === "azure-devops"
+      ? canonicalRepositoryKey(identity.canonicalKey.toLowerCase())
+      : null;
   const link = resolveThreadCurrentPullRequestLink(
-    links.filter(
-      (link) =>
+    links.filter((link) => {
+      if (azureKey !== null) {
+        const key = legacyThreadPullRequestKey(link, link.host);
+        return canonicalRepositoryKey(`${key.host}/${key.repository}`) === azureKey;
+      }
+      return (
         link.host.toLowerCase() === host.toLowerCase() &&
-        link.repository.toLowerCase() === repository.toLowerCase(),
-    ),
+        link.repository.toLowerCase() === repository.toLowerCase()
+      );
+    }),
   );
   if (link === null) return null;
-  return { projectId, repository: link.repository, number: link.number, url: link.url };
+  return {
+    projectId,
+    repository: azureKey === null ? link.repository : repository,
+    number: link.number,
+    url: link.url,
+  };
 }
 
 export interface ThreadPullRequestChain {

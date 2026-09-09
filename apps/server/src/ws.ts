@@ -71,8 +71,6 @@ import {
   type TerminalEvent,
   type TerminalMetadataStreamEvent,
   type PullRequestRef,
-  pullRequestHostOf,
-  type SourceControlProviderKind,
   WS_METHODS,
   WsRpcGroup,
 } from "@t3tools/contracts";
@@ -147,6 +145,7 @@ import * as UsageService from "./usage/UsageService.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import { listLinkedPullRequestThreads } from "./pullRequest/linkedThreads.ts";
+import { pullRequestSyncKey } from "./pullRequest/pullRequestSyncKey.ts";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as PullRequestSyncReactor from "./orchestration/PullRequestSyncReactor.ts";
 import * as SourceControlDiscovery from "./sourceControl/SourceControlDiscovery.ts";
@@ -487,22 +486,12 @@ const makeWsRpcLayer = (
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
       /** A reference's host-level link key; the project's own host where the ref names none. */
       const resolvePullRequestSyncKey = (reference: PullRequestRef) =>
-        reference.host !== undefined
-          ? Effect.succeed({
-              host: reference.host,
-              repository: reference.repository,
-              number: reference.number,
-            })
+        reference.host !== undefined && reference.repository.includes("/")
+          ? Effect.succeed(pullRequestSyncKey(reference))
           : projectionSnapshotQuery.getProjectShellById(reference.projectId).pipe(
-              Effect.map((project) => {
-                if (Option.isNone(project) || project.value.repositoryIdentity == null) return null;
-                const identity = project.value.repositoryIdentity;
-                return {
-                  host: pullRequestHostOf(identity, identity.provider as SourceControlProviderKind),
-                  repository: reference.repository,
-                  number: reference.number,
-                };
-              }),
+              Effect.map((project) =>
+                pullRequestSyncKey(reference, Option.getOrUndefined(project)?.repositoryIdentity),
+              ),
               Effect.orElseSucceed(() => null),
             );
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
