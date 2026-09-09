@@ -312,6 +312,34 @@ describe("findProjectOnChangeRequestHost", () => {
     name: "backend",
   });
 
+  it.each([
+    "ssh.dev.azure.com/v3/org-a/project/web",
+    "vs-ssh.visualstudio.com/v3/org-a/project/web",
+    "org-a.visualstudio.com/defaultcollection/project/_git/web",
+    "dev.azure.com/org-a/project/_git/web",
+  ])("matches Azure browser references against %s", (canonicalKey) => {
+    const checkout = project("azure", {
+      canonicalKey,
+      provider: "azure-devops",
+      displayName: canonicalKey.split("/").slice(1).join("/"),
+    });
+    const reference = { host: "dev.azure.com", repository: "org-a/project/_git/web", number: 42 };
+    expect(findProjectForChangeRequest([checkout], reference)).toBe(checkout);
+    expect(findProjectOnChangeRequestHost([checkout], reference)).toBe(checkout);
+    expect(
+      findProjectOnChangeRequestHost([checkout], {
+        ...reference,
+        repository: "org-b/project/_git/web",
+      }),
+    ).toBeUndefined();
+    expect(
+      findProjectOnChangeRequestHost([checkout], {
+        ...reference,
+        repository: "org-a/other-project/_git/web",
+      }),
+    ).toBeUndefined();
+  });
+
   it("prefers the project checked out from the link's own repository", () => {
     expect(
       findProjectOnChangeRequestHost([frontend, backend], {

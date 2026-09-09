@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { parseChangeRequestUrl, siblingPullRequestUrl } from "./changeRequestUrl.ts";
+import {
+  changeRequestUrlFor,
+  parseChangeRequestUrl,
+  pullRequestCandidateUrlFromReferenceAutolink,
+  siblingPullRequestUrl,
+} from "./changeRequestUrl.ts";
 
 describe("parseChangeRequestUrl", () => {
   it("reads a GitHub pull request, lower-casing the repository", () => {
@@ -17,6 +22,19 @@ describe("parseChangeRequestUrl", () => {
       repository: "platform/api",
       number: 7,
     });
+  });
+
+  it("reads a supported GitHub host with a middle DNS label", () => {
+    expect(parseChangeRequestUrl("https://code.github.example.com/acme/web/pull/42")).toEqual({
+      host: "code.github.example.com",
+      repository: "acme/web",
+      number: 42,
+    });
+    expect(
+      pullRequestCandidateUrlFromReferenceAutolink(
+        "https://code.github.example.com/acme/web/issues/42",
+      ),
+    ).toBe("https://code.github.example.com/acme/web/pull/42");
   });
 
   it("reads a GitLab merge request on any host, nested groups and all", () => {
@@ -103,5 +121,22 @@ describe("siblingPullRequestUrl", () => {
   it("rejects non-PR URLs and invalid numbers", () => {
     expect(siblingPullRequestUrl("https://github.com/acme/web/issues/42", 43)).toBeNull();
     expect(siblingPullRequestUrl("https://github.com/acme/web/pull/42", 0)).toBeNull();
+  });
+});
+
+describe("changeRequestUrlFor", () => {
+  it.each([
+    ["ssh.dev.azure.com", "v3/org/project/web"],
+    ["vs-ssh.visualstudio.com", "v3/org/project/web"],
+    ["org.visualstudio.com", "defaultcollection/project/_git/web"],
+    ["dev.azure.com", "org/project/_git/web"],
+  ])("builds a browser URL from the Azure remote %s/%s", (host, repository) => {
+    const url = changeRequestUrlFor("azure-devops", host, repository, 42);
+    expect(url).toBe("https://dev.azure.com/org/project/_git/web/pullrequest/42");
+    expect(parseChangeRequestUrl(url!)).toEqual({
+      host: "dev.azure.com",
+      repository: "org/project/_git/web",
+      number: 42,
+    });
   });
 });

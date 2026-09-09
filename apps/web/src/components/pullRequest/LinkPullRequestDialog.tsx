@@ -8,7 +8,7 @@ import {
 import { useAtomValue } from "@effect/atom-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { findProjectOnChangeRequestHost, parseChangeRequestUrl } from "~/lib/openPullRequestLink";
+import { parseChangeRequestUrl } from "~/lib/openPullRequestLink";
 import { parsePullRequestReference } from "~/pullRequestReference";
 import { useProjects, useThreadShell } from "~/state/entities";
 import { usePullRequestLinking } from "~/hooks/usePullRequestLinking";
@@ -85,7 +85,7 @@ export function resolveLinkPullRequestInput(input: {
     readonly repository: string;
     readonly webUrl: (number: number) => string | null;
   } | null;
-  readonly hostHasProject: (host: string) => boolean;
+  readonly hasProject: (reference: ResolvedLink) => boolean;
 }): { link: ResolvedLink } | { error: string } | null {
   const parsed =
     parseChangeRequestUrl(input.reference.trim()) !== null
@@ -94,8 +94,8 @@ export function resolveLinkPullRequestInput(input: {
   if (parsed === null) return null;
   const url = parseChangeRequestUrl(parsed);
   if (url !== null) {
-    if (!input.hostHasProject(url.host)) {
-      return { error: `No project in this environment is checked out from ${url.host}.` };
+    if (!input.hasProject({ ...url, url: parsed })) {
+      return { error: `No project in this environment can read ${url.host}/${url.repository}.` };
     }
     return {
       link: { host: url.host, repository: url.repository, number: url.number, url: parsed },
@@ -107,11 +107,12 @@ export function resolveLinkPullRequestInput(input: {
     return { error: "Paste a full URL to link a pull request from another repository." };
   }
   const webUrl = input.project.webUrl(number);
-  if (webUrl === null) {
+  const webReference = webUrl === null ? null : parseChangeRequestUrl(webUrl);
+  if (webUrl === null || webReference === null) {
     return { error: "Paste a full URL; this project's host has no known pull request URL." };
   }
   return {
-    link: { host: input.project.host, repository: input.project.repository, number, url: webUrl },
+    link: { ...webReference, url: webUrl },
   };
 }
 
@@ -163,14 +164,9 @@ function LinkPullRequestDialog({
       resolveLinkPullRequestInput({
         reference,
         project: ownProject,
-        hostHasProject: (host) =>
-          findProjectOnChangeRequestHost(environmentProjects, {
-            host,
-            repository: "",
-            number: 1,
-          }) !== undefined,
+        hasProject: (reference) => linking.canLink(reference.url),
       }),
-    [environmentProjects, ownProject, reference],
+    [linking, ownProject, reference],
   );
 
   const submit = useCallback(async () => {

@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { sourceControlRepositorySelector } from "@t3tools/shared/sourceControl";
 import type {
   EnvironmentId,
   ScopedThreadRef,
@@ -76,11 +77,14 @@ export function usePullRequestLinking(environmentId: EnvironmentId | null | unde
       const parsed = parseChangeRequestUrl(url);
       if (parsed === null || threadRef.environmentId !== environmentId || (linked && !canLink(url)))
         throw new Error("The pull request is not available in this environment.");
+      const legacyProject = findProjectForChangeRequest(environmentProjects, parsed);
       const mutation = planThreadPullRequestMutation({
         capabilities,
         threadId: threadRef.threadId,
         reference: { ...parsed, url },
-        legacyProjectId: findProjectForChangeRequest(environmentProjects, parsed)?.id ?? null,
+        legacyProjectId: legacyProject?.id ?? null,
+        legacyRepository:
+          sourceControlRepositorySelector(legacyProject?.repositoryIdentity) ?? undefined,
         linked,
       });
       if (mutation === null)

@@ -52,6 +52,37 @@ describe("thread pull request capability negotiation", () => {
       input: { threadId: input.threadId, linkedPullRequest: null },
     });
   });
+  it("uses the checkout's Azure selector only for legacy metadata commands", () => {
+    const azure = {
+      ...input,
+      reference: {
+        host: "dev.azure.com",
+        repository: "org/project/_git/web",
+        number: 42,
+        url: "https://dev.azure.com/org/project/_git/web/pullrequest/42",
+      },
+      legacyRepository: "web",
+    };
+    expect(
+      planThreadPullRequestMutation({
+        ...azure,
+        capabilities: { threadPullRequestLinking: true },
+      }),
+    ).toMatchObject({
+      type: "thread.meta.update",
+      input: { linkedPullRequest: { repository: "web", number: 42 } },
+    });
+    expect(
+      planThreadPullRequestMutation({
+        ...azure,
+        capabilities: { threadPullRequests: true },
+      }),
+    ).toMatchObject({
+      type: "thread.pull-request.link",
+      input: { repository: "org/project/_git/web", number: 42 },
+    });
+  });
+
   it("never sends a same-host route as an exact repository to an old server", () => {
     expect(
       planThreadPullRequestMutation({

@@ -24,6 +24,7 @@ export function planThreadPullRequestMutation({
   threadId,
   reference,
   legacyProjectId,
+  legacyRepository,
   linked,
 }: {
   capabilities: LinkingCapabilities | null | undefined;
@@ -31,6 +32,8 @@ export function planThreadPullRequestMutation({
   reference: ThreadPullRequestKey & { readonly url: string };
   /** Older servers need the exact repository checkout; same-host routing is not available. */
   legacyProjectId: ProjectId | null;
+  /** Provider selector for legacy APIs, which omit Azure organization and project paths. */
+  legacyRepository?: string | undefined;
   linked: boolean;
 }) {
   switch (threadPullRequestLinkMode(capabilities)) {
@@ -59,7 +62,7 @@ export function planThreadPullRequestMutation({
             linked && legacyProjectId !== null
               ? {
                   projectId: legacyProjectId,
-                  repository: reference.repository,
+                  repository: legacyRepository ?? reference.repository,
                   number: reference.number,
                   url: reference.url,
                 }

@@ -1,4 +1,5 @@
 import type { RepositoryIdentity, ThreadLinkedPullRequest } from "@t3tools/contracts";
+import { canonicalRepositoryKey } from "./sourceControl.ts";
 
 /**
  * A change request named the way a thread link names one: the host below which the repository
@@ -17,7 +18,7 @@ export interface ChangeRequestLink {
 /** The host itself, one of its subdomains, or an install named after the provider. */
 function isHostOf(hostname: string, apex: string, label?: string): boolean {
   if (hostname === apex || hostname.endsWith(`.${apex}`)) return true;
-  return label !== undefined && hostname.startsWith(`${label}.`);
+  return label !== undefined && hostname.split(".").includes(label);
 }
 
 /**
@@ -91,7 +92,7 @@ export function changeRequestUrlFor(
     case "bitbucket":
       return `https://${host}/${repository}/pull-requests/${number}`;
     case "azure-devops":
-      return `https://${host}/${repository}/pullrequest/${number}`;
+      return `https://${canonicalRepositoryKey(`${host}/${repository}`.toLowerCase())}/pullrequest/${number}`;
     default:
       return null;
   }
@@ -150,7 +151,7 @@ export function pullRequestCandidateUrlFromReferenceAutolink(targetUrl: string):
     !(
       url.hostname.toLowerCase() === "github.com" ||
       url.hostname.toLowerCase().endsWith(".github.com") ||
-      url.hostname.toLowerCase().startsWith("github.")
+      url.hostname.toLowerCase().split(".").includes("github")
     )
   ) {
     return null;

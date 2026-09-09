@@ -28,22 +28,6 @@ import { forkParked } from "../serverActivation.ts";
 import * as OrchestrationEngine from "./Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./Services/ProjectionSnapshotQuery.ts";
 
-/**
- * Keeps every thread ↔ pull request link's host snapshot current. One sweep a minute reads
- * the shell snapshot, groups visible links by pull request so the host is asked once per PR
- * no matter how many threads share it, and writes back only what changed. Native stacks the
- * host reports are auto-linked to the thread as `source: "stack"`.
- */
-export class PullRequestSyncReactor extends Context.Service<
-  PullRequestSyncReactor,
-  {
-    readonly start: () => Effect.Effect<void, never, Scope.Scope>;
-    readonly drain: Effect.Effect<void>;
-    /** Force the next sweep to re-read this pull request, even when its snapshot is terminal. */
-    readonly requestSync: (key: ThreadPullRequestKey) => Effect.Effect<void>;
-  }
->()("t3/orchestration/PullRequestSyncReactor") {}
-
 const SLOW_SYNC_INTERVAL_MS = 15 * 60 * 1_000;
 
 type SnapshotFields = Omit<ThreadPullRequestSnapshot, "syncedAt">;
@@ -121,7 +105,22 @@ function isUnsettled(thread: OrchestrationThreadShell): boolean {
   return thread.settledOverride !== "settled" && thread.settledAt === null;
 }
 
-/** `.../pull/42` → `.../pull/43`; null when the linked url carries no trailing number. */
+/**
+ * Keeps every thread ↔ pull request link's host snapshot current. One sweep a minute reads
+ * the shell snapshot, groups visible links by pull request so the host is asked once per PR
+ * no matter how many threads share it, and writes back only what changed. Native stacks the
+ * host reports are auto-linked to the thread as `source: "stack"`.
+ */
+export class PullRequestSyncReactor extends Context.Service<
+  PullRequestSyncReactor,
+  {
+    readonly start: () => Effect.Effect<void, never, Scope.Scope>;
+    readonly drain: Effect.Effect<void>;
+    /** Force the next sweep to re-read this pull request, even when its snapshot is terminal. */
+    readonly requestSync: (key: ThreadPullRequestKey) => Effect.Effect<void>;
+  }
+>()("t3/orchestration/PullRequestSyncReactor") {}
+
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
   const engine = yield* OrchestrationEngine.OrchestrationEngineService;

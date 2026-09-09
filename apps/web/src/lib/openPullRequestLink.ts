@@ -4,6 +4,10 @@ import { type MouseEvent, useCallback } from "react";
 
 import { pullRequestHostOf, type SourceControlProviderKind } from "@t3tools/contracts";
 import { parseChangeRequestUrl, type ChangeRequestLink } from "@t3tools/shared/changeRequestUrl";
+import {
+  canonicalRepositoryKey,
+  sourceControlRepositorySelector,
+} from "@t3tools/shared/sourceControl";
 
 import { useOpenLink } from "../browser/useOpenLink";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
@@ -44,6 +48,12 @@ export function findProjectForChangeRequest(
     if (!identity) return false;
     const kind = identity.provider as SourceControlProviderKind | undefined;
     if (kind === undefined) return false;
+    if (kind === "azure-devops") {
+      return (
+        canonicalRepositoryKey(identity.canonicalKey.toLowerCase()) ===
+        canonicalRepositoryKey(`${link.host}/${link.repository}`.toLowerCase())
+      );
+    }
     const repository =
       identity.displayName ??
       (identity.owner && identity.name ? `${identity.owner}/${identity.name}` : null);
@@ -66,12 +76,20 @@ export function findProjectOnChangeRequestHost(
 ): EnvironmentProject | undefined {
   const own = findProjectForChangeRequest(projects, link);
   if (own !== undefined) return own;
+  // Azure CLI reads use the checkout's organization and project, not host-wide credentials.
+  if (
+    canonicalRepositoryKey(`${link.host}/${link.repository}`.toLowerCase()).startsWith(
+      "dev.azure.com/",
+    )
+  )
+    return undefined;
   return projects.find((project) => {
     const identity = project.repositoryIdentity;
     const kind = identity?.provider as SourceControlProviderKind | undefined;
     return (
       identity != null &&
       kind !== undefined &&
+      kind !== "azure-devops" &&
       pullRequestHostOf(identity, kind) === link.host.toLowerCase()
     );
   });
@@ -154,6 +172,11 @@ export function useOpenChangeRequestLink(
             )
           : undefined);
       if (project === undefined || !reads(project.environmentId)) return false;
+      const repository =
+        serverConfigs.get(project.environmentId)?.environment.capabilities.threadPullRequests ===
+        true
+          ? parsed.repository
+          : (sourceControlRepositorySelector(project.repositoryIdentity) ?? parsed.repository);
       event.preventDefault();
       event.stopPropagation();
       if (resolvedPanelRef) {
@@ -167,7 +190,7 @@ export function useOpenChangeRequestLink(
             .threadPullRequests === true
             ? { host: parsed.host }
             : {}),
-          repository: parsed.repository,
+          repository,
           url: targetUrl,
           number: parsed.number,
         });
@@ -178,7 +201,7 @@ export function useOpenChangeRequestLink(
               ...previous,
               involvement: previous.involvement ?? "all",
               state: previous.state ?? "all",
-              repository: parsed.repository,
+              repository,
               number: parsed.number,
               selectedProjectId: project.id,
               selectedEnvironmentId: project.environmentId,
@@ -195,7 +218,7 @@ export function useOpenChangeRequestLink(
           // Every state, so the pull request being opened is also in the list behind it whether
           // it is open, merged or closed.
           state: "all",
-          repository: parsed.repository,
+          repository,
           number: parsed.number,
           selectedProjectId: project.id,
           // Named so the page opens the right one of two servers holding this project.
